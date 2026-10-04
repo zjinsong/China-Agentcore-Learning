@@ -396,7 +396,7 @@ python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 | `tools/list` 为空 | target 是否 READY、schema 格式 |
 | `tools/call` 403 | Gateway 服务角色的 `lambda:InvokeFunction` |
 | 模型 401/403 | `MODEL_API_KEY` 是否注入、端点和模型 id 是否匹配 |
-| 模型不调工具直接答 | 工具 docstring 是否清楚、system prompt 是否要求只用工具数据 |
+| 模型不调用工具直接作答 | 工具 docstring 是否清晰、system prompt 是否要求仅用工具数据 |
 
 ## 清理
 

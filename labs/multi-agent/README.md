@@ -147,6 +147,36 @@ PY
 
 改 `capabilities.json` 里 `"enabled": false`,再跑一次 —— 那个专家的能力会从可用清单消失,Supervisor 选不到它。这就是第 5 章说的"能力目录是单一事实来源"。
 
+## 接模型
+
+这个例子的 `plan()` 是确定性的关键词匹配 —— 所以**不配 API Key 也能跑**,便于先看清调度逻辑。
+
+换成真模型:把 `supervisor.py` 的 `plan()` 改成调 LLM,输出同样结构的 JSON:
+
+```python
+def plan(question, capabilities):
+    import os
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ["MODEL_API_KEY"],
+                    base_url=os.environ["MODEL_BASE_URL"])     # DeepSeek: https://api.deepseek.com/v1
+    r = client.chat.completions.create(
+        model=os.environ["MODEL_ID"],                          # DeepSeek: deepseek-chat
+        messages=[
+            {"role": "system", "content":
+             "只输出 JSON:{\"steps\":[{\"agent\":...,\"capability\":...,\"depends_on\":[],\"prompt\":...}]}。"
+             "只能用给定能力;有数据依赖时用 depends_on 指向更早的步骤。"},
+            {"role": "user", "content":
+             f"问题:{question}\n可用能力:{json.dumps(capabilities, ensure_ascii=False)}"},
+        ],
+        response_format={"type": "json_object"},
+    )
+    return json.loads(r.choices[0].message.content)["steps"]
+```
+
+**后面的 `harness.validate()` 一个字都不用改** —— 它只接受符合能力目录的计划,模型输出非法计划会被直接拒掉。这就是第 5 章说的"模型负责规划,harness 负责约束"。
+
+模型配置的完整说明见 [3.10 接模型](../../03-build.md#310-接模型从-echo-变成真-agent)。
+
 ## 和真实部署的差距
 
 这个例子为了能本地跑做了简化:

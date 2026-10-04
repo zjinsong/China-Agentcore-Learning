@@ -53,7 +53,15 @@ export AWS_DEFAULT_REGION=cn-northwest-1
 aws sts get-caller-identity
 ```
 
-**模型另备**。AgentCore 不提供模型,中国区 Bedrock 也没有可用模型 —— 要接外部的(自部署或 DeepSeek、通义千问等第三方 OpenAI 兼容接口)。第 3 章之前的实验不需要模型;到 [3.10 接模型](03-build.md#310-接模型从-echo-变成真-agent) 才需要 API Key,`labs/multi-agent` 用确定性规划器,不配模型也能跑。
+**模型另备**。AgentCore 服务独立于 LLM 模型:海外项目用 Bedrock 上的模型,中国区 Bedrock 没有基础模型,所以用 DeepSeek、通义千问这类第三方 API(OpenAI 兼容接口),配置就是三个环境变量:
+
+```bash
+export MODEL_BASE_URL="https://api.deepseek.com/v1"    # DeepSeek 为例
+export MODEL_ID="deepseek-chat"
+export MODEL_API_KEY="sk-xxxxxxxx"
+```
+
+第 3 章之前的实验不需要模型;到 [3.10 接模型](03-build.md#310-接模型从-echo-变成真-agent) 才用到,`labs/multi-agent` 用确定性规划器,不配模型也能跑。
 
 实验创建的真实资源信息写在 `.local/`(已被 git 忽略)。实验会产生费用,做完按 [清理](03-build.md#清理) 删掉。
 

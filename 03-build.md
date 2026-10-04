@@ -279,27 +279,45 @@ python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 
 到这里应用还只是 echo,不是 agent —— 它不会理解问题、不会选工具。
 
-**AgentCore 不提供模型。** 中国区 Bedrock 没有可用的基础模型,所以模型要从外部接:自己部署的、或第三方 API(DeepSeek、通义千问、Kimi 等)。大部分都提供 **OpenAI 兼容接口**,用同一套代码就能接。
+**AgentCore 服务独立于 LLM 模型**:它负责托管和调度,模型你自己选。海外项目一般用 Bedrock 上的 Claude/Nova;中国区 Bedrock 没有基础模型,所以用第三方 API(DeepSeek、通义千问、Kimi 等)或自部署模型。它们基本都提供 **OpenAI 兼容接口**,所以配置方式统一:**三个值 —— `base_url` + `api_key` + `model_id`**。
 
-### 凭证怎么放
+下面以 **DeepSeek** 为例,换别的模型只改这三个值。
 
-API Key 不进代码、不进镜像、不进 Git。用环境变量注入 Runtime:
+### 第一步:准备三个值
+
+```bash
+export MODEL_BASE_URL="https://api.deepseek.com/v1"
+export MODEL_ID="deepseek-chat"
+export MODEL_API_KEY="sk-xxxxxxxx"        # 在 DeepSeek 控制台申请
+```
+
+换通义千问就是:
+
+```bash
+export MODEL_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+export MODEL_ID="qwen-plus"
+export MODEL_API_KEY="sk-xxxxxxxx"
+```
+
+### 第二步:注入 Runtime
+
+API Key 不进代码、不进镜像、不进 Git。创建/更新 Runtime 时用环境变量传:
 
 ```python
 client.create_agent_runtime(
     agentRuntimeName="learning_runtime",
     # ... 其余参数同 3.5
     environmentVariables={
-        "MODEL_BASE_URL": "https://api.example.com/v1",
-        "MODEL_ID": "your-model-id",
-        "MODEL_API_KEY": api_key,              # 从本地环境或密钥管理服务读
+        "MODEL_BASE_URL": os.environ["MODEL_BASE_URL"],
+        "MODEL_ID": os.environ["MODEL_ID"],
+        "MODEL_API_KEY": os.environ["MODEL_API_KEY"],
     },
 )
 ```
 
-更稳的做法是放 Secrets Manager,Runtime 启动时用执行角色去取(角色要加 `secretsmanager:GetSecretValue`)。
+生产环境把 Key 放 Secrets Manager,Runtime 启动时用执行角色取(角色加 `secretsmanager:GetSecretValue`),环境变量里只放 secret 名字。
 
-### 用 Strands 接
+### 第三步:代码里读
 
 [Strands Agents](https://github.com/strands-agents/sdk-python) 是 AWS 开源的 agent 框架,支持 OpenAI 兼容端点:
 
@@ -311,16 +329,16 @@ from strands.models.openai import OpenAIModel
 model = OpenAIModel(
     client_args={
         "api_key": os.environ["MODEL_API_KEY"],
-        "base_url": os.environ["MODEL_BASE_URL"],
+        "base_url": os.environ["MODEL_BASE_URL"],      # DeepSeek: https://api.deepseek.com/v1
     },
-    model_id=os.environ["MODEL_ID"],
+    model_id=os.environ["MODEL_ID"],                   # DeepSeek: deepseek-chat
     params={"temperature": 0.3, "max_tokens": 4096},
 )
 
 agent = Agent(model=model, system_prompt="你是云运维助手,只根据工具返回的真实数据回答。")
 ```
 
-加上 Gateway 工具,`@app.entrypoint` 里调它:
+在 `@app.entrypoint` 里调它:
 
 ```python
 @app.entrypoint
@@ -329,16 +347,16 @@ def handler(event, context):
     return {"answer": str(result)}
 ```
 
-依赖:
+依赖加一行:
 
 ```text
 strands-agents
 bedrock-agentcore
 ```
 
-### 工具怎么给模型
+### 第四步:把工具给模型
 
-Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型才知道有哪些工具可用:
+Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型才知道有什么可用:
 
 ```python
 from strands import tool
@@ -361,7 +379,7 @@ def query_running_ec2(region: str = "cn-northwest-1") -> str:
 python3 03-build/deploy_runtime.py invoke --prompt "宁夏有几台运行中的 EC2?"
 ```
 
-模型应该**调工具拿真实数据**再回答,而不是凭记忆编。要是它不调工具直接答,检查工具描述是否清楚、system prompt 有没有要求"只根据工具数据回答"。
+模型应该**调工具拿真实数据**再回答,而不是凭记忆编。要是它不调工具直接答,检查工具 docstring 是否清楚、system prompt 有没有要求"只根据工具数据回答"。
 
 本教程的多 Agent 例子([labs/multi-agent](labs/multi-agent/README.md))用确定性规划器代替模型,这样不配 API Key 也能跑通、看清调度逻辑。把 `plan()` 换成模型输出 JSON 计划即可 —— harness 校验不用改。
 

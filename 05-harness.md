@@ -235,7 +235,9 @@ python3 labs/cloudops-mini/workflow.py
             "depends_on": [], "prompt": "..."}]}
 ```
 
-**harness 的校验和执行完全不用改** —— 因为它只接受符合能力目录的计划。模型负责规划,harness 负责约束,IAM 负责权限。
+**harness 的校验和执行完全不用改** —— 它只接受符合能力目录的计划。模型负责规划,harness 负责约束,IAM 负责权限。
+
+模型怎么配(DeepSeek 等 OpenAI 兼容接口,三个环境变量)见 [3.10 接模型](03-build.md#310-接模型从-echo-变成真-agent);替换 `plan()` 的完整代码见 [labs/multi-agent/README](labs/multi-agent/README.md#接模型)。
 
 ## 5.10 和托管 Harness 的差别
 

@@ -4,7 +4,14 @@ AgentCore 提供运行 Agent、接工具、管凭证、看运行情况的基础�
 
 一句话记住:**Runtime 跑代码,Gateway 接工具。**
 
-**模型不在里面。** AgentCore 不提供基础模型,中国区 Bedrock 也没有可用模型 —— 模型要从外部接(自部署的,或 DeepSeek、通义千问这类第三方 API,多数提供 OpenAI 兼容接口)。怎么接见 [3.10](03-build.md#310-接模型从-echo-变成真-agent)。
+**AgentCore 服务独立于 LLM 模型。** 它只负责托管和调度,模型由你自己选、自己配:
+
+| | 常用模型 | 怎么接 |
+| --- | --- | --- |
+| 海外 | Bedrock 上的 Claude、Nova 等 | SDK 直接调 Bedrock |
+| **中国区** | **DeepSeek、通义千问、Kimi 等第三方 API,或自部署模型** | **OpenAI 兼容接口(base_url + api_key + model_id)** |
+
+中国区 Bedrock 没有基础模型,所以走第二行。配置就是三个环境变量,代码不用改 —— 见 [3.10 接模型](03-build.md#310-接模型从-echo-变成真-agent)。
 
 ## 1.1 一条请求怎么走
 

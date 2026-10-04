@@ -4,6 +4,8 @@ AgentCore 提供运行 Agent、接工具、管凭证、看运行情况的基础�
 
 一句话记住:**Runtime 跑代码,Gateway 接工具。**
 
+**模型不在里面。** AgentCore 不提供基础模型,中国区 Bedrock 也没有可用模型 —— 模型要从外部接(自部署的,或 DeepSeek、通义千问这类第三方 API,多数提供 OpenAI 兼容接口)。怎么接见 [3.10](03-build.md#310-接模型从-echo-变成真-agent)。
+
 ## 1.1 一条请求怎么走
 
 用户问"运行中 EC2 的 CPU 多少":

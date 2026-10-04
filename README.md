@@ -53,6 +53,8 @@ export AWS_DEFAULT_REGION=cn-northwest-1
 aws sts get-caller-identity
 ```
 
+**模型另备**。AgentCore 不提供模型,中国区 Bedrock 也没有可用模型 —— 要接外部的(自部署或 DeepSeek、通义千问等第三方 OpenAI 兼容接口)。第 3 章之前的实验不需要模型;到 [3.10 接模型](03-build.md#310-接模型从-echo-变成真-agent) 才需要 API Key,`labs/multi-agent` 用确定性规划器,不配模型也能跑。
+
 实验创建的真实资源信息写在 `.local/`(已被 git 忽略)。实验会产生费用,做完按 [清理](03-build.md#清理) 删掉。
 
 参考:[中国区功能差异](https://docs.amazonaws.cn/en_us/aws/latest/userguide/bedrock-agentcore.html) · [Runtime 协议契约](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/runtime-service-contract.html) · [AWS CloudOps 参考项目](https://github.com/aws-samples/sample-cloudops-multi-agent-system)

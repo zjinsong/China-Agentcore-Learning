@@ -275,7 +275,97 @@ python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 
 **只创建 Gateway 不算完成**,要看到 Lambda 真实返回。
 
-## 3.10 常见失败
+## 3.10 接模型:从 echo 变成真 agent
+
+到这里应用还只是 echo,不是 agent —— 它不会理解问题、不会选工具。
+
+**AgentCore 不提供模型。** 中国区 Bedrock 没有可用的基础模型,所以模型要从外部接:自己部署的、或第三方 API(DeepSeek、通义千问、Kimi 等)。大部分都提供 **OpenAI 兼容接口**,用同一套代码就能接。
+
+### 凭证怎么放
+
+API Key 不进代码、不进镜像、不进 Git。用环境变量注入 Runtime:
+
+```python
+client.create_agent_runtime(
+    agentRuntimeName="learning_runtime",
+    # ... 其余参数同 3.5
+    environmentVariables={
+        "MODEL_BASE_URL": "https://api.example.com/v1",
+        "MODEL_ID": "your-model-id",
+        "MODEL_API_KEY": api_key,              # 从本地环境或密钥管理服务读
+    },
+)
+```
+
+更稳的做法是放 Secrets Manager,Runtime 启动时用执行角色去取(角色要加 `secretsmanager:GetSecretValue`)。
+
+### 用 Strands 接
+
+[Strands Agents](https://github.com/strands-agents/sdk-python) 是 AWS 开源的 agent 框架,支持 OpenAI 兼容端点:
+
+```python
+import os
+from strands import Agent
+from strands.models.openai import OpenAIModel
+
+model = OpenAIModel(
+    client_args={
+        "api_key": os.environ["MODEL_API_KEY"],
+        "base_url": os.environ["MODEL_BASE_URL"],
+    },
+    model_id=os.environ["MODEL_ID"],
+    params={"temperature": 0.3, "max_tokens": 4096},
+)
+
+agent = Agent(model=model, system_prompt="你是云运维助手,只根据工具返回的真实数据回答。")
+```
+
+加上 Gateway 工具,`@app.entrypoint` 里调它:
+
+```python
+@app.entrypoint
+def handler(event, context):
+    result = agent(str(event.get("prompt", "")))
+    return {"answer": str(result)}
+```
+
+依赖:
+
+```text
+strands-agents
+bedrock-agentcore
+```
+
+### 工具怎么给模型
+
+Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型才知道有哪些工具可用:
+
+```python
+from strands import tool
+
+@tool
+def query_running_ec2(region: str = "cn-northwest-1") -> str:
+    """查询指定区域运行中的 EC2 实例。"""
+    return gateway_client.call("learning-status___get_learning_status", {})
+```
+
+函数名、类型标注和 docstring 就是模型看到的工具说明 —— 写清楚它才会用对。
+
+### V2 注意
+
+模型客户端可以放模块级(只是配置,懒连接),**但不要在模块级做实际调用或取临时凭证** —— 那会被快照捕获并共享(见 [1.5](01-china-region.md#15-runtime-版本v1-和-v2))。
+
+### 验证
+
+```bash
+python3 03-build/deploy_runtime.py invoke --prompt "宁夏有几台运行中的 EC2?"
+```
+
+模型应该**调工具拿真实数据**再回答,而不是凭记忆编。要是它不调工具直接答,检查工具描述是否清楚、system prompt 有没有要求"只根据工具数据回答"。
+
+本教程的多 Agent 例子([labs/multi-agent](labs/multi-agent/README.md))用确定性规划器代替模型,这样不配 API Key 也能跑通、看清调度逻辑。把 `plan()` 换成模型输出 JSON 计划即可 —— harness 校验不用改。
+
+## 3.11 常见失败
 
 | 现象 | 先查 |
 | --- | --- |
@@ -287,6 +377,8 @@ python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 | 调用超时 | Runtime 日志里的启动/应用错误 |
 | `tools/list` 为空 | target 是否 READY、schema 格式 |
 | `tools/call` 403 | Gateway 服务角色的 `lambda:InvokeFunction` |
+| 模型 401/403 | `MODEL_API_KEY` 是否注入、端点和模型 id 是否匹配 |
+| 模型不调工具直接答 | 工具 docstring 是否清楚、system prompt 是否要求只用工具数据 |
 
 ## 清理
 

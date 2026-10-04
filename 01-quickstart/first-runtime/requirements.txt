@@ -1,3 +1,5 @@
 bedrock-agentcore
+boto3
+requests
 fastapi
 uvicorn

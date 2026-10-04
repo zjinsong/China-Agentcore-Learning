@@ -1,19 +1,7 @@
-# Claude Code MCP 配置
+# Claude Code 配置补充
 
-Claude Code standalone 示例配置位于 `~/.claude/mcp.json`。请按官方客户端文档确认实际安装路径：
+完整配置、命令、验证和对话例子已集中在 [第 2 部分](../README.md)，按对应客户端小节操作。
 
-```json
-{
-  "mcpServers": {
-    "bedrock-agentcore-mcp-server": {
-      "command": "uvx",
-      "args": ["awslabs.amazon-bedrock-agentcore-mcp-server@latest"],
-      "env": {"FASTMCP_LOG_LEVEL": "ERROR"},
-      "disabled": false,
-      "autoApprove": ["search_agentcore_docs", "fetch_agentcore_doc"]
-    }
-  }
-}
-```
+若连接失败，先检查客户端所在环境的 uvx、PATH、代理与 Server 日志。GUI 与终端的 AWS 环境可能不同；部署前在执行命令的环境核对身份。
 
-先测试 `search_agentcore_docs`；部署、删除、Identity 或 Gateway 配置变更应保留人工审批。[官方 Claude Code 配置](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/mcp-getting-started.html)
+参考：[Claude Code 官方配置](https://code.claude.com/docs/en/mcp)。

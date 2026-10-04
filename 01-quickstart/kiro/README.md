@@ -1,19 +1,7 @@
-# Kiro MCP 配置
+# Kiro 配置补充
 
-创建或更新 `.kiro/settings/mcp.json`：
+完整配置、命令、验证和对话例子已集中在 [第 2 部分](../README.md)，按对应客户端小节操作。
 
-```json
-{
-  "mcpServers": {
-    "bedrock-agentcore-mcp-server": {
-      "command": "uvx",
-      "args": ["awslabs.amazon-bedrock-agentcore-mcp-server@latest"],
-      "env": {"FASTMCP_LOG_LEVEL": "ERROR"},
-      "disabled": false,
-      "autoApprove": ["search_agentcore_docs", "fetch_agentcore_doc"]
-    }
-  }
-}
-```
+若连接失败，先检查客户端所在环境的 uvx、PATH、代理与 Server 日志。GUI 与终端的 AWS 环境可能不同；部署前在执行命令的环境核对身份。
 
-重启客户端后检查文档查询工具。这个配置与 AWS 官方 Kiro 示例一致；不要把 deploy/delete 类工具加入自动批准列表。[官方 Kiro 配置](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/mcp-getting-started.html)
+参考：[Kiro 官方配置](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/mcp-getting-started.html)。

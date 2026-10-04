@@ -10,3 +10,5 @@
 8. 用真实中国区工具调用验证，而不是只验证部署状态。
 
 部署前后均需复核官方区域差异：[AWS China AgentCore](https://docs.amazonaws.cn/en_us/aws/latest/userguide/bedrock-agentcore.html)。
+
+完整逐步操作在 [第 3 部分部署指南](../02-build-agentcore/README.md)，本页作为补充核对清单。

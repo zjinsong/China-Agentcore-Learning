@@ -16,7 +16,7 @@ MCP 是编码助手调用外部工具的协议。`awslabs.amazon-bedrock-agentco
 运行时:用户 → Runtime → Gateway → 业务工具
 ```
 
-本章配**第一行**。第 3 章部署**第二行**。开发用的 MCP 不会变成 CloudOps 专家的查询工具。
+本章配**第一行**。第 3 章部署**第二行**。开发用的 MCP 装在你的编码助手里,和你部署的 agent 运行时用的工具是两回事。
 
 **中国区可用**:这个包纯 Python + boto3,不依赖 `@aws/agentcore` CLI(那个不支持中国区)。只要设 `AWS_REGION=cn-northwest-1`,boto3 自动解析到 `.amazonaws.com.cn`。
 

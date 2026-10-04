@@ -335,7 +335,7 @@ model = OpenAIModel(
     params={"temperature": 0.3, "max_tokens": 4096},
 )
 
-agent = Agent(model=model, system_prompt="你是云运维助手,只根据工具返回的真实数据回答。")
+agent = Agent(model=model, system_prompt="你是一个助手,只根据工具返回的真实数据回答。")
 ```
 
 在 `@app.entrypoint` 里调它:
@@ -362,8 +362,8 @@ Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型才知道有什么可用:
 from strands import tool
 
 @tool
-def query_running_ec2(region: str = "cn-northwest-1") -> str:
-    """查询指定区域运行中的 EC2 实例。"""
+def get_learning_status() -> str:
+    """检查 Gateway 到 Lambda 的连通性。"""
     return gateway_client.call("learning-status___get_learning_status", {})
 ```
 
@@ -376,12 +376,12 @@ def query_running_ec2(region: str = "cn-northwest-1") -> str:
 ### 验证
 
 ```bash
-python3 03-build/deploy_runtime.py invoke --prompt "宁夏有几台运行中的 EC2?"
+python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 ```
 
 模型应该**调工具拿真实数据**再回答,而不是凭记忆编。要是它不调工具直接答,检查工具 docstring 是否清楚、system prompt 有没有要求"只根据工具数据回答"。
 
-本教程的多 Agent 例子([labs/multi-agent](labs/multi-agent/README.md))用确定性规划器代替模型,这样不配 API Key 也能跑通、看清调度逻辑。把 `plan()` 换成模型输出 JSON 计划即可 —— harness 校验不用改。
+第 4 章用一个完整的例子把"模型 + 工具"串起来 —— 一个能查天气的 agent。
 
 ## 3.11 常见失败
 
@@ -416,4 +416,4 @@ aws ecr describe-repositories --query 'repositories[].repositoryName'
 aws lambda list-functions --query 'Functions[].FunctionName'
 ```
 
-下一步:[4. CloudOps 实践](04-cloudops.md)
+下一步:[4. 构建一个 agent 应用](04-agent-app.md)

@@ -1,248 +1,134 @@
-# 5. Harness 实践
+# 5. Harness 应用
 
-链路跑通后,新问题来了:模型可能选错工具、漏查资源、重复调用,某一步失败后任务一直挂着。Harness 就是管这些执行行为的那层逻辑。
+第 4 章的 agent 能调工具回答问题。但当一个任务需要**多步、有先后依赖、要控制预算和失败**时,光靠模型自己跑循环不够可靠 —— 它可能漏步、重复调、某步失败后不知所措。Harness 就是管这个执行过程的那层逻辑。
 
-中国区没有托管 Harness 组件,所以自己在应用里实现。
+## 5.1 Harness 是什么
 
-## 5.1 一句话
+AgentCore 官方的 **Harness** 是一个托管的 agent 循环:一次 API 调用指定模型、系统提示词和工具,平台负责编排、工具执行、记忆管理和生成回答。
 
-**Agent 决定怎么查,Harness 检查计划、按依赖执行、记录证据,保证任务最终有答复。**
+**中国区没有托管 Harness**,所以用应用代码实现等价的最小循环。职责是一样的:
 
-还是那个问题:"查宁夏运行中 EC2 的性能,再查今天是否有关机"
+| Harness 负责 | 不负责 |
+| --- | --- |
+| 校验计划、按依赖调度、记录证据、保证任务有终态 | 不代替模型做规划 |
+| 控制预算(总时长、步数) | 不代替 IAM 做权限 |
 
-```text
-模型生成计划:
-  步骤0  Monitoring  列出运行中 EC2
-  步骤1  Monitoring  按实例 ID 查指标      depends_on: [0]
-  步骤2  CloudTrail  查今天 StopInstances   depends_on: []
+一句话:**模型决定做什么,Harness 保证做的过程可控、可观察、有结果。**
 
-Harness:
-  校验计划 → 执行就绪步骤(0 和 2 并行)→ 存证据
-         → 0 完成后推进 1 → 全部结束 → 汇总
-```
+## 5.2 最小实现需要什么
 
-## 5.2 三层各管什么
+| 部件 | 作用 |
+| --- | --- |
+| 工具目录 | 声明每个工具要什么输入、产出什么;计划只能引用目录里的工具 |
+| 计划校验 | 拦住不存在的工具、循环依赖 |
+| 依赖调度 | 就绪的步骤执行,上游失败的跳过 |
+| 证据记录 | 每步的工具、结果或错误都留痕,可核对 |
+| 预算 | 总时长、步数上限,避免无限循环 |
 
-| 层 | 管什么 | 不管什么 |
-| --- | --- | --- |
-| Runtime | 跑代码、隔离会话 | 不会自动实现你的工作流 |
-| Gateway | 工具发现、鉴权、调用 | 不决定先查实例还是先查指标 |
-| **Harness** | 任务生命周期、计划校验、依赖、预算、结果检查 | 不能用 prompt 代替 IAM |
+## 5.3 一个例子
 
-## 5.3 最小实现有哪些部件
+[`05-harness/harness.py`](05-harness/harness.py) 不到 110 行,实现上面全部部件。任务:**查天气 → 根据天气给穿衣建议**(第二步依赖第一步的结果)。
 
-| 部件 | 输入/输出 | 为什么要 |
-| --- | --- | --- |
-| 能力目录 | 能力 id、工具、输入、输出、区域 | 光有专家名字不知道他能查什么 |
-| 计划校验 | 计划 → 通过/拒绝 | 拦住不存在的能力、越权、循环依赖 |
-| 调度器 | 已完成结果 → 就绪步骤 | 查指标必须等到真实实例 ID |
-| 任务状态 | queued/running/succeeded/failed/timed_out | 页面和恢复流程要知道发生了什么 |
-| 预算 | 总期限、单次期限、最大步数 | 不能无限等或反复调模型 |
-| 证据 | 工具名、区域、时间窗、数据、错误 | 回答要能核对,区分空数据和失败 |
-| 最终答复 | 成功结果 + 未解决项 | 一个专家失败也不能让用户干等 |
+工具目录是单一事实来源:
 
-一开始把目录和调度写在 Python 里就行。需要异步、用户隔离、重启恢复时,再换成 DynamoDB 存任务 + S3 存证据 + SQS 唤醒 worker。
-
-## 5.4 能力目录
-
-```json
-{
-  "id": "query_ec2_metrics",
-  "expert": "monitoring",
-  "description": "按实例 ID 查询 CloudWatch 指标",
-  "tools": ["cloudwatch___get_metric_data"],
-  "inputs": ["region", "instance_ids", "start_time", "end_time"],
-  "outputs": ["per_instance_metrics"],
-  "regions": ["cn-northwest-1", "cn-north-1"],
-  "access": "read_only"
+```python
+TOOLS = {
+    "get_weather":    {"inputs": ["city"],    "outputs": ["weather"]},
+    "suggest_outfit": {"inputs": ["weather"], "outputs": ["suggestion"]},
 }
 ```
 
-部署后核对三件事,少一件这个能力就不能用:
-
-1. 专家是启用状态
-2. 对应 Runtime 可调用
-3. 所需工具**确实出现在 Gateway 的实际工具清单里**
-
-第 3 点容易漏:配置文件里写了工具名,不代表 Gateway 真注册了。要从 Gateway 实际 inventory 刷新,而不是拿本地 schema 当证明。
-
-## 5.5 计划校验
+计划校验只接受目录里的工具,且依赖只能指向更早的步骤(这样图必然无环):
 
 ```python
-def validate(plan, catalog):
-    allowed = {c["id"]: c for c in catalog}
-    for index, step in enumerate(plan):
-        cap = allowed.get(step["capability"])
-        if not cap:
-            raise ValueError(f"能力不存在: {step['capability']}")
-        if cap["expert"] != step["agent"]:
-            raise ValueError("能力不属于这个专家")
-        for dep in step.get("depends_on", []):
-            if dep < 0 or dep >= index:
-                raise ValueError("依赖只能指向前面的步骤")
-        if cap["regions"] and step.get("region") not in cap["regions"]:
-            raise ValueError("区域超出能力范围")
-```
-
-`dep < index` 这个约束同时解决了循环依赖——只能依赖前面的步骤,图必然无环。
-
-还要校验:总步数上限、输入字段齐全、下游要的 output 上游确实提供。
-
-同一专家可以有多个步骤(先发现再查指标),但同一能力不要重复出现。
-
-## 5.6 调度:谁现在能跑
-
-```python
-def ready_steps(plan, results):
-    out = []
+def validate(plan):
     for i, step in enumerate(plan):
-        if i in results:                      # 跑过了
-            continue
-        deps = step.get("depends_on", [])
-        if all(d in results and results[d]["status"] == "succeeded" for d in deps):
-            out.append(i)
-    return out
+        if step["tool"] not in TOOLS:
+            raise ValueError(f"步骤 {i}: 工具不存在 {step['tool']}")
+        for dep in step.get("depends_on", []):
+            if dep < 0 or dep >= i:
+                raise ValueError(f"步骤 {i}: 依赖 {dep} 必须指向更早的步骤")
 ```
 
-上游失败时,下游**直接标失败,不执行**——别让它拿着空数据去查。
-
-依赖的结果要传给下游:
+调度按依赖推进,上游失败则下游跳过(不带空数据往下跑):
 
 ```python
-step_input = {
-    "prompt": step["prompt"],
-    "dependency_results": {d: results[d]["data"] for d in step.get("depends_on", [])},
-}
+# 上游失败 -> 下游直接标失败
+if any(results.get(d, {}).get("status") == "failed"
+       for d in step.get("depends_on", [])):
+    results[i] = {"status": "failed", "error": "上游失败,未执行"}
 ```
 
-指标步骤从这里拿 `instance_ids`,不让模型重新猜。
+依赖的产出会传给下游 —— 穿衣建议用的是上一步查到的真实天气,不是模型猜的。
 
-## 5.7 预算和超时
+## 5.4 跑一下
 
-学习环境建议:整个任务 120 秒,单次工具调用 30 秒。
+```bash
+python3 05-harness/harness.py
+```
 
-关键:**每步执行前按剩余预算缩短本次期限**,不是每步都重新拿 120 秒。
+正常输出(依赖链):
+
+```text
+完成 2 步,失败 0 步
+  步骤0 get_weather: {'weather': {'city': '上海', 'temp_c': 18, 'condition': '雨'}}
+  步骤1 suggest_outfit: {'suggestion': '外套 + 带伞'}
+```
+
+**失败传播** —— 查一个没有数据的城市:
 
 ```python
-deadline = time.time() + 120
-...
-remaining = deadline - time.time()
-if remaining <= 0:
-    finish(task, "任务超出总期限,已终止")
-timeout = min(30, remaining)
-```
-
-重试策略:
-
-- 只读的连接错误/限流 → 短重试一次
-- 权限错误、参数错误、计划错误 → 直接失败,重试没意义
-
-## 5.8 失败怎么报
-
-好的终态答复:
-
-```text
-查到两台运行中 EC2 及其 CPU 指标(见上)。
-关机审计查询因权限不足失败,无法判断今天是否有关机操作。
-任务已结束。
-```
-
-不能写成:
-
-- ❌ "今天没有关机操作"(权限失败说成没有事件)
-- ❌ "CPU 为 0"(空数据说成零)
-- ❌ "平台不支持审计查询"(一个角色权限不足说成平台能力缺失)
-
-界面上创建任务后应立刻显示任务 ID 和当前阶段,终态给用户可读结果。
-
-## 5.9 动手
-
-### 看 harness 怎么调度
-
-```bash
-cd labs/multi-agent && ./run.sh
-```
-
-这个例子的 `harness.py` 就是上面讲的那些:`available_capabilities()`、`validate()`、`ready_steps()`、`blocked_steps()`、`Budget`。
-
-**验证并行和依赖**:
-
-```text
-并行执行: ['步骤0', '步骤2']     ← 无依赖,同时发
-  ✓ 步骤0 discover_running_ec2
-  ✓ 步骤2 query_stop_events
-并行执行: ['步骤1']               ← 等到步骤0 的 instance_ids
-  ✓ 步骤1 query_ec2_metrics
-```
-
-**验证上游失败不带空数据往下跑**。只启动 cloudtrail,不启动 monitoring:
-
-```bash
-cd labs/multi-agent
-PYTHONPATH=. python3 expert.py cloudtrail &
-PYTHONPATH=. python3 supervisor.py "查性能指标和关机情况"
-kill %1
+plan = [
+    {"tool": "get_weather", "args": {"city": "广州"}, "depends_on": []},
+    {"tool": "suggest_outfit", "depends_on": [0]},
+]
 ```
 
 ```text
-  ✗ 步骤0 discover_running_ec2: Connection refused
-  ✓ 步骤2 query_stop_events
-  ✗ 步骤1 跳过(上游失败)
-...
-- monitoring/discover_running_ec2 查询失败:Connection refused —— 该结论无法得出
-- monitoring/query_ec2_metrics 查询失败:上游步骤 0 失败,未执行
+完成 0 步,失败 2 步
+  步骤0 get_weather 失败: 没有 广州 的天气数据
+  步骤1 suggest_outfit 失败: 上游失败,未执行
 ```
 
-审计照常成功,指标链条明确失败 —— 不会因为一个专家挂掉就整体卡住或编造结果。
+第二步没有拿着空数据硬跑,而是明确跳过 —— 这正是 Harness 的价值:**失败是失败,不会被当成"没有结果"糊弄过去。**
 
-**验证计划校验**:
+**计划校验**:
 
-```bash
-cd labs/multi-agent
-PYTHONPATH=. python3 - <<'PY'
-import harness
-caps = harness.available_capabilities()
-for plan, label in [
-    ([{"agent":"monitoring","capability":"不存在","depends_on":[]}], "能力不存在"),
-    ([{"agent":"cloudtrail","capability":"query_ec2_metrics","depends_on":[]}], "专家不匹配"),
-    ([{"agent":"monitoring","capability":"discover_running_ec2","depends_on":[1]},
-      {"agent":"monitoring","capability":"query_ec2_metrics","depends_on":[0]}], "循环依赖"),
-]:
-    try:
-        harness.validate(plan, caps)
-        print(f"✗ {label} 未拦截")
-    except ValueError as e:
-        print(f"✓ {label}: {e}")
-PY
+```python
+validate([{"tool": "不存在", "depends_on": []}])              # 工具不存在
+validate([{"tool": "get_weather", "depends_on": [1]}, ...])  # 循环依赖
 ```
 
-**验证能力目录是单一事实来源**:改 `capabilities.json` 里 `"enabled": false` 停用一个专家,再跑 —— 它的能力从可用清单消失,Supervisor 选不到。
+两种都会被拒。
 
-### 另一个实验:只看查询实现
+## 5.5 接模型
 
-```bash
-python3 labs/cloudops-mini/workflow.py
-```
-
-确定性工作流,不起服务,专注在工具查询本身(时区处理、分页、空数据)。
-
-### 接模型
-
-理解结构之后,把 `supervisor.py` 的 `plan()` 换成 LLM,让它输出同样结构的 JSON:
+例子里的 `plan` 是手写的。真实场景让模型生成它 —— 模型只输出计划的 JSON 结构:
 
 ```json
-{"steps": [{"agent": "monitoring", "capability": "discover_running_ec2",
-            "depends_on": [], "prompt": "..."}]}
+{"plan": [
+  {"tool": "get_weather", "args": {"city": "上海"}, "depends_on": []},
+  {"tool": "suggest_outfit", "depends_on": [0]}
+]}
 ```
 
-**harness 的校验和执行完全不用改** —— 它只接受符合能力目录的计划。模型负责规划,harness 负责约束,IAM 负责权限。
+**`validate()` 和 `run()` 一个字都不用改**:模型输出不合法的计划(用了不存在的工具、循环依赖)会被 `validate()` 直接拒掉。这就是分工 ——
 
-模型怎么配(DeepSeek 等 OpenAI 兼容接口,三个环境变量)见 [3.10 接模型](03-build.md#310-接模型从-echo-变成真-agent);替换 `plan()` 的完整代码见 [labs/multi-agent/README](labs/multi-agent/README.md#接模型)。
+- **模型**负责规划(把自然语言变成计划)
+- **Harness**负责约束和执行(校验、调度、记录)
+- **IAM**负责权限(工具能访问什么)
 
-## 5.10 和托管 Harness 的差别
+三者不互相替代。模型会犯错,所以计划要校验;prompt 写得再严也不是权限,所以权限归 IAM。
 
-Global 的托管 Harness 提供声明式工具、内置迭代/超时/token 上限控制。自己实现的版本只覆盖项目需要的部分,不等价。
+## 5.6 从最小实现到生产
 
-但责任边界是一样的:**模型负责规划,Harness 负责约束和执行,IAM 负责权限**。这三件事不能互相代替——prompt 写得再严也不是权限控制。
+| 这里 | 生产 |
+| --- | --- |
+| 工具是本地函数 | Gateway 的 Lambda target,agent 通过 MCP 调 |
+| `plan` 手写 | 模型输出 JSON 计划 |
+| 结果在内存 | 外部存储(DynamoDB 存状态,S3 存证据) |
+| 单次运行 | 异步任务 + 恢复(用 `runtimeSessionId` 续上下文) |
 
-本仓库的最小实现在 [labs/multi-agent/harness.py](labs/multi-agent/harness.py),不到 100 行,涵盖能力目录、计划校验、DAG 调度和预算。要加功能(持久化、重试、用户隔离)从这里往上改。
+核心的"校验 → 调度 → 记录"逻辑在扩展过程中基本不变,这是把它单独拎出来做成一层的意义。
+
+至此五章完成:中国区能用什么([1](01-china-region.md))→ 用 MCP 辅助开发([2](02-vibe-coding.md))→ 部署一条链路([3](03-build.md))→ 构建一个 agent([4](04-agent-app.md))→ 让多步任务可靠执行(本章)。

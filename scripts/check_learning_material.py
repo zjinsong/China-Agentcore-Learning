@@ -38,30 +38,35 @@ def main():
                 failures.append(f"{path.relative_to(ROOT)} {language}: {error}")
     if failures:
         raise SystemExit("\n".join(failures))
-    spec = importlib.util.spec_from_file_location("learning_workflow", ROOT / "labs/cloudops-mini/workflow.py")
-    workflow = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(workflow)
-    start, end = workflow.today_window()
-    result = workflow.run(workflow.Offline(), "cn-northwest-1", start, end)
-    assert result["status"] == "succeeded"
-    assert set(result["steps"]["metrics"]["result"]) == set(result["steps"]["discovery"]["result"])
 
-    class FailedAudit(workflow.Offline):
-        def audit(self):
-            raise PermissionError("Synthetic audit denial")
+    # 离线校验最小 harness:正常依赖链、上游失败跳过、计划校验。
+    spec = importlib.util.spec_from_file_location("harness", ROOT / "05-harness/harness.py")
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
 
-    result = workflow.run(FailedAudit(), "cn-northwest-1", start, end)
-    assert result["status"] == "partial_failure"
-    assert result["steps"]["metrics"]["status"] == "succeeded"
+    ok = harness.run([
+        {"tool": "get_weather", "args": {"city": "上海"}, "depends_on": []},
+        {"tool": "suggest_outfit", "depends_on": [0]},
+    ])
+    assert ok[0]["status"] == "succeeded" and ok[1]["status"] == "succeeded"
 
-    class FailedDiscovery(workflow.Offline):
-        def discover(self):
-            raise TimeoutError("Synthetic discovery timeout")
+    bad = harness.run([
+        {"tool": "get_weather", "args": {"city": "广州"}, "depends_on": []},
+        {"tool": "suggest_outfit", "depends_on": [0]},
+    ])
+    assert bad[0]["status"] == "failed" and bad[1]["status"] == "failed"
 
-    result = workflow.run(FailedDiscovery(), "cn-northwest-1", start, end)
-    assert result["steps"]["metrics"]["status"] == "skipped"
-    assert result["steps"]["audit"]["status"] == "succeeded"
-    print("Documentation links/snippets and offline workflow success/failure checks passed")
+    for plan in (
+        [{"tool": "不存在", "depends_on": []}],
+        [{"tool": "get_weather", "depends_on": [1]}, {"tool": "suggest_outfit", "depends_on": [0]}],
+    ):
+        try:
+            harness.validate(plan)
+            raise AssertionError("非法计划未被拦截")
+        except ValueError:
+            pass
+
+    print("Documentation links/snippets and offline harness success/failure checks passed")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 """Create an isolated, same-account Gateway/Lambda learning lab in AWS China."""
+import argparse
 import io
 import json
 from pathlib import Path
+import sys
 import time
 import zipfile
 
@@ -30,7 +32,71 @@ def wait(client, operation, params):
     raise TimeoutError("Resource not READY; inspect status before retrying.")
 
 
+def test(session, state):
+    """List tools and call get_learning_status through the Gateway."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from gateway_client import GatewayClient
+    client = GatewayClient(state["gateway_url"], state["region"])
+    client.initialize()
+    print("tools:", [t["name"] for t in client.list_tools()])
+    print("result:", json.dumps(client.learning_status(), ensure_ascii=False))
+
+
+def cleanup(session, state):
+    """Delete target, gateway, lambda and roles in dependency order."""
+    control, lam, iam = (session.client(s) for s in ("bedrock-agentcore-control", "lambda", "iam"))
+    if state.get("target_id"):
+        try:
+            control.delete_gateway_target(gatewayIdentifier=state["gateway_id"], targetId=state["target_id"])
+            print("Target deleted:", state["target_id"])
+            time.sleep(5)
+        except control.exceptions.ResourceNotFoundException:
+            print("Target already gone.")
+    if state.get("gateway_id"):
+        try:
+            control.delete_gateway(gatewayIdentifier=state["gateway_id"])
+            print("Gateway deleted:", state["gateway_id"])
+        except control.exceptions.ResourceNotFoundException:
+            print("Gateway already gone.")
+    try:
+        lam.delete_function(FunctionName=FUNCTION)
+        print("Lambda deleted:", FUNCTION)
+    except lam.exceptions.ResourceNotFoundException:
+        print("Lambda already gone.")
+    for role, policies in (("learning-gateway-role", ["learning-invoke-lambda"]),
+                           ("learning-lambda-role", ["learning-lambda-logs"])):
+        for policy in policies:
+            try:
+                iam.delete_role_policy(RoleName=role, PolicyName=policy)
+            except iam.exceptions.NoSuchEntityException:
+                pass
+        try:
+            iam.delete_role(RoleName=role)
+            print("Role deleted:", role)
+        except iam.exceptions.NoSuchEntityException:
+            print("Role already gone:", role)
+    try:
+        session.client("logs").delete_log_group(logGroupName=f"/aws/lambda/{FUNCTION}")
+    except session.client("logs").exceptions.ResourceNotFoundException:
+        pass
+    if STATE.exists():
+        STATE.unlink()
+        print("Local state removed:", STATE)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", nargs="?", default="deploy", choices=["deploy", "test", "cleanup"])
+    args = parser.parse_args()
+    if args.action != "deploy":
+        state = json.loads(STATE.read_text(encoding="utf-8"))
+        session = boto3.Session(region_name=state["region"])
+        (test if args.action == "test" else cleanup)(session, state)
+        return
+    deploy()
+
+
+def deploy():
     if STATE.exists():
         raise RuntimeError("Gateway state already exists; inspect it rather than creating duplicates.")
     runtime = json.loads((ROOT / ".local" / "runtime.json").read_text(encoding="utf-8"))

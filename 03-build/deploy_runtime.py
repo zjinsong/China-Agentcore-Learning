@@ -9,7 +9,7 @@ import uuid
 import boto3
 from botocore.config import Config
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / ".local" / "runtime.json"
 NAME = "learning_runtime"
 ROLE = "learning-runtime-role"
@@ -120,9 +120,39 @@ def connect(session, state):
     print("Gateway connected. Invoke with a NEW session to test the updated version.")
 
 
+def cleanup(session, state):
+    """Delete the Runtime, ECR repository and role created by this lab."""
+    control = session.client("bedrock-agentcore-control")
+    if state.get("runtime_id"):
+        try:
+            control.delete_agent_runtime(agentRuntimeId=state["runtime_id"])
+            print("Runtime delete requested:", state["runtime_id"])
+        except control.exceptions.ResourceNotFoundException:
+            print("Runtime already gone.")
+    iam = session.client("iam")
+    for policy in ("learning-runtime-base", "learning-invoke-gateway"):
+        try:
+            iam.delete_role_policy(RoleName=ROLE, PolicyName=policy)
+        except iam.exceptions.NoSuchEntityException:
+            pass
+    try:
+        iam.delete_role(RoleName=ROLE)
+        print("Role deleted:", ROLE)
+    except iam.exceptions.NoSuchEntityException:
+        print("Role already gone.")
+    try:
+        session.client("ecr").delete_repository(repositoryName=REPOSITORY, force=True)
+        print("ECR repository deleted:", REPOSITORY)
+    except session.client("ecr").exceptions.RepositoryNotFoundException:
+        print("ECR repository already gone.")
+    if STATE.exists():
+        STATE.unlink()
+        print("Local state removed:", STATE)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["prepare", "create", "status", "invoke", "connect"])
+    parser.add_argument("action", choices=["prepare", "create", "status", "invoke", "connect", "cleanup"])
     parser.add_argument("--region", default=os.environ.get("AWS_REGION", "cn-northwest-1"))
     parser.add_argument("--prompt", default="hello")
     parser.add_argument("--session-id")
@@ -138,6 +168,8 @@ def main():
         create(session, state)
     elif args.action == "connect":
         connect(session, state)
+    elif args.action == "cleanup":
+        cleanup(session, state)
     elif args.action == "status":
         print(session.client("bedrock-agentcore-control").get_agent_runtime(agentRuntimeId=state["runtime_id"])["status"])
     else:

@@ -275,113 +275,21 @@ python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 
 **只创建 Gateway 不算完成**,要看到 Lambda 真实返回。
 
-## 3.10 接模型:从 echo 变成真 agent
+## 3.10 下一步:接入模型
 
-到这里应用还只是 echo,不是 agent —— 它不会理解问题、不会选工具。
+到这里基础设施已就绪:应用部署在 Runtime 上、能被调用、能通过 Gateway 访问工具。但应用还只是回显,不是 agent —— 它不理解问题、不会选工具。
 
-**AgentCore 服务独立于 LLM 模型**:它负责托管和调度,模型你自己选。海外项目一般用 Bedrock 上的 Claude/Nova;中国区 Bedrock 没有基础模型,所以用第三方 API(DeepSeek、通义千问、Kimi 等)或自部署模型。它们基本都提供 **OpenAI 兼容接口**,所以配置方式统一:**三个值 —— `base_url` + `api_key` + `model_id`**。
-
-下面以 **DeepSeek** 为例,换别的模型只改这三个值。
-
-### 第一步:准备三个值
-
-```bash
-export MODEL_BASE_URL="https://api.deepseek.com/v1"
-export MODEL_ID="deepseek-chat"
-export MODEL_API_KEY="sk-xxxxxxxx"        # 在 DeepSeek 控制台申请
-```
-
-换通义千问就是:
-
-```bash
-export MODEL_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-export MODEL_ID="qwen-plus"
-export MODEL_API_KEY="sk-xxxxxxxx"
-```
-
-### 第二步:注入 Runtime
-
-API Key 不进代码、不进镜像、不进 Git。创建/更新 Runtime 时用环境变量传:
+让它成为 agent 需要**接入一个模型**。AgentCore 本身不含模型:它负责托管和调度,模型由你选择。中国区 Bedrock 没有基础模型,通常用第三方 OpenAI 兼容接口(DeepSeek、通义千问等),通过三个环境变量注入 Runtime:
 
 ```python
-client.create_agent_runtime(
-    agentRuntimeName="learning_runtime",
-    # ... 其余参数同 3.5
-    environmentVariables={
-        "MODEL_BASE_URL": os.environ["MODEL_BASE_URL"],
-        "MODEL_ID": os.environ["MODEL_ID"],
-        "MODEL_API_KEY": os.environ["MODEL_API_KEY"],
-    },
-)
+environmentVariables={
+    "MODEL_BASE_URL": "https://api.deepseek.com/v1",   # DeepSeek 为例
+    "MODEL_ID": "deepseek-chat",
+    "MODEL_API_KEY": "...",                            # 生产环境应放 Secrets Manager
+}
 ```
 
-生产环境把 Key 放 Secrets Manager,Runtime 启动时用执行角色取(角色加 `secretsmanager:GetSecretValue`),环境变量里只放 secret 名字。
-
-### 第三步:在代码中构建 agent
-
-前两步只是把模型的地址和密钥准备好,还需要一个 **agent 框架**来真正驱动模型、让它调用工具。本教程用 [Strands Agents](https://github.com/strands-agents/sdk-python)(AWS 开源的 agent 框架)。它支持 OpenAI 兼容端点,因此能直接接入 DeepSeek 这类模型:
-
-```python
-import os
-from strands import Agent
-from strands.models.openai import OpenAIModel
-
-model = OpenAIModel(
-    client_args={
-        "api_key": os.environ["MODEL_API_KEY"],
-        "base_url": os.environ["MODEL_BASE_URL"],      # DeepSeek: https://api.deepseek.com/v1
-    },
-    model_id=os.environ["MODEL_ID"],                   # DeepSeek: deepseek-chat
-    params={"temperature": 0.3, "max_tokens": 4096},
-)
-
-agent = Agent(model=model, system_prompt="你是一个助手,只根据工具返回的真实数据回答。")
-```
-
-在 `@app.entrypoint` 里调它:
-
-```python
-@app.entrypoint
-def handler(event, context):
-    result = agent(str(event.get("prompt", "")))
-    return {"answer": str(result)}
-```
-
-依赖加一行:
-
-```text
-strands-agents
-bedrock-agentcore
-```
-
-### 第四步:把工具给模型
-
-Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型即可调用:
-
-```python
-from strands import tool
-
-@tool
-def get_learning_status() -> str:
-    """检查 Gateway 到 Lambda 的连通性。"""
-    return gateway_client.call("learning-status___get_learning_status", {})
-```
-
-函数名、类型标注和 docstring 就是模型看到的工具说明 —— 写清楚它才会用对。
-
-### V2 注意
-
-模型客户端可以放模块级(只是配置,懒连接),**但不要在模块级做实际调用或取临时凭证** —— 那会被快照捕获并共享(见 [1.5](01-china-region.md#15-runtime-版本v1-和-v2))。
-
-### 验证
-
-```bash
-python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
-```
-
-模型应当**调用工具获取真实数据**后再回答,而非凭记忆编造。若模型未调用工具直接作答,检查工具 docstring 是否清晰、system prompt 是否要求"仅依据工具数据回答"。
-
-第 4 章用一个完整的例子把"模型 + 工具"串起来 —— 一个能查天气的 agent。
+"模型 + 工具"如何在代码中组装成一个完整的 agent,见第 4 章 —— 那里有一个能查天气、可运行的完整例子。
 
 ## 3.11 常见失败
 

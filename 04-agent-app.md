@@ -67,13 +67,15 @@ app.run()
 
 ## 4.3 配模型
 
-按第 3 章 [3.10](03-build.md#310-接模型从-echo-变成真-agent),三个环境变量:
+模型通过三个环境变量注入 Runtime(DeepSeek 为例,换别的 OpenAI 兼容模型只改这三个值):
 
 ```bash
 export MODEL_BASE_URL="https://api.deepseek.com/v1"
 export MODEL_ID="deepseek-chat"
-export MODEL_API_KEY="sk-xxxxxxxx"
+export MODEL_API_KEY="sk-xxxxxxxx"          # 生产环境应放 Secrets Manager
 ```
+
+创建 Runtime 时把它们放进 `environmentVariables`(见 4.5 部署)。`app.py` 的 `build_model()` 从这三个变量读取配置。
 
 本例未配置模型也能运行:没有 `MODEL_API_KEY` 时 `app.py` 进入离线模式,直接调用工具并返回结果,用于先验证工具逻辑,再接入模型。
 

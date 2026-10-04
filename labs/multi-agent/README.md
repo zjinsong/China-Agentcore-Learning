@@ -161,4 +161,4 @@ PY
 
 **协议结构和 harness 逻辑是一样的** —— 换成真实部署时,`plan()` 换 LLM、`call_expert()` 换成 SigV4 调 Runtime、`tools.py` 搬进 Lambda,`harness.py` 基本不用改。
 
-完整实现见 [China-AgentCore-Demo](https://github.com/zjinsong/China-Agentcore-Demo) 的 `control/` 目录。
+迁移的具体步骤见 [第 4 章 4.8](../../04-cloudops.md)。

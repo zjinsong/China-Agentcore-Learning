@@ -243,4 +243,4 @@ Global 的托管 Harness 提供声明式工具、内置迭代/超时/token 上�
 
 但责任边界是一样的:**模型负责规划,Harness 负责约束和执行,IAM 负责权限**。这三件事不能互相代替——prompt 写得再严也不是权限控制。
 
-完整实现参考 [China-AgentCore-Demo](https://github.com/zjinsong/China-Agentcore-Demo) 的 `control/` 目录(能力校验、DAG 调度、任务状态、证据汇总)。
+本仓库的最小实现在 [labs/multi-agent/harness.py](labs/multi-agent/harness.py),不到 100 行,涵盖能力目录、计划校验、DAG 调度和预算。要加功能(持久化、重试、用户隔离)从这里往上改。

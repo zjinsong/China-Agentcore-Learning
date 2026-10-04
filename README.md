@@ -55,4 +55,4 @@ aws sts get-caller-identity
 
 实验创建的真实资源信息写在 `.local/`(已被 git 忽略)。实验会产生费用,做完按 [清理](03-build.md#清理) 删掉。
 
-参考:[中国区功能差异](https://docs.amazonaws.cn/en_us/aws/latest/userguide/bedrock-agentcore.html) · [Runtime 协议契约](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/runtime-service-contract.html) · [完整 CloudOps Demo](https://github.com/zjinsong/China-Agentcore-Demo)
+参考:[中国区功能差异](https://docs.amazonaws.cn/en_us/aws/latest/userguide/bedrock-agentcore.html) · [Runtime 协议契约](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/runtime-service-contract.html) · [AWS CloudOps 参考项目](https://github.com/aws-samples/sample-cloudops-multi-agent-system)

@@ -319,8 +319,10 @@ kill %1
 
 另外 EC2 基础指标**不含内存**,要内存得看有没有装 CloudWatch Agent,不能编。
 
-## 4.9 完整实现参考
+## 4.9 再往下走
 
-本章只选了三个专家讲清协作链路。完整的六 Agent + 控制面实现见 [China-AgentCore-Demo](https://github.com/zjinsong/China-Agentcore-Demo),上游参考 [AWS Sample](https://github.com/aws-samples/sample-cloudops-multi-agent-system)。
+本章选了三个专家讲清协作链路。要扩成更多专家,照 4.8 的迁移步骤加就行:在 `capabilities.json` 加专家和能力,部署对应 Runtime,刷新能力清单。
+
+配置驱动的多 Agent 结构可以参考 AWS 官方示例 [sample-cloudops-multi-agent-system](https://github.com/aws-samples/sample-cloudops-multi-agent-system)(基于 Global 的组件,中国区要按第 1 章的差异替换 Memory、Harness 等)。
 
 下一步:[5. Harness 实践](05-harness.md)

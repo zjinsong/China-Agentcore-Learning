@@ -45,14 +45,14 @@ export AWS_DEFAULT_REGION=cn-northwest-1
 aws sts get-caller-identity
 ```
 
-**模型另备**。AgentCore 不含基础模型:海外用 Bedrock 上的模型,中国区 Bedrock 无基础模型,改用第三方 OpenAI 兼容接口(DeepSeek、通义千问等),配置是三个环境变量:
+**模型独立配置**。AgentCore 不含模型,中国区用第三方 OpenAI 兼容接口(DeepSeek、通义千问等),三个环境变量搞定:
 
 ```bash
-export MODEL_BASE_URL="https://api.deepseek.com/v1"    # DeepSeek 为例
+export MODEL_BASE_URL="https://api.deepseek.com/v1"
 export MODEL_ID="deepseek-chat"
 export MODEL_API_KEY="sk-xxxxxxxx"
 ```
 
-第 1、2 章不碰资源;第 3 章起创建真实资源(产生费用,做完按 [清理](03-build.md#清理) 删除)。第 3 章之前不需要模型,第 4 章的例子不配模型也能跑离线模式。实验产生的资源标识写在 `.local/`(已被 git 忽略)。
+实验从第 3 章起创建真实资源(产生费用,做完按 [清理](03-build.md#清理) 删除);资源标识写在 `.local/`(git 忽略)。
 
 参考:[中国区功能差异](https://docs.amazonaws.cn/en_us/aws/latest/userguide/bedrock-agentcore.html) · [Runtime 协议契约](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/runtime-service-contract.html) · [AgentCore MCP 入门](https://docs.amazonaws.cn/en_us/bedrock-agentcore/latest/devguide/mcp-getting-started.html)

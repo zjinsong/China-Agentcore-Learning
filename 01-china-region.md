@@ -28,14 +28,14 @@ AgentCore 提供运行 Agent、接工具、管凭证、看运行情况的基础�
 
 ## 1.2 六项可用服务
 
-| 服务 | 作用 | CloudOps 里用来干什么 |
+| 服务 | 一句话 | CloudOps 里用来干什么 |
 | --- | --- | --- |
-| **Runtime** | 托管运行 Agent 代码 | 跑 Supervisor 和各专家 |
-| **Gateway** | 工具的统一入口(MCP) | 专家查 AWS 资源 |
-| **Identity** | 管理访问外部系统的凭证 | 接企业 SaaS 时用(本教程不用) |
-| **Observability** | 指标、日志、追踪 | 判断慢在模型还是工具 |
-| **Browser** | 托管浏览器会话 | 必须网页交互的任务 |
-| **Code Interpreter** | 隔离的代码执行环境 | 对已取得的数据做计算 |
+| **Runtime** | 你的 Agent 代码跑在这 | 跑 Supervisor 和各专家 |
+| **Gateway** | Agent 调工具的总入口 | 专家查 AWS 资源 |
+| **Identity** | 托管访问外部系统的凭证 | 接企业 SaaS 时用(本教程不用) |
+| **Observability** | 看哪一环慢了、错了 | 判断慢在模型还是工具 |
+| **Browser** | 给 Agent 一个云端浏览器 | 只有网页没 API 的场景 |
+| **Code Interpreter** | 给 Agent 一个代码沙箱 | 对查到的数据做计算 |
 
 入门只用 Runtime + Gateway。
 
@@ -60,19 +60,39 @@ Agent 调工具的统一入口。它验证调用者,再路由到 Lambda 等 targ
 
 ### Identity
 
-管理 Agent 访问外部系统的凭证。企业登录的常见做法:企业 IdP 签发 JWT,Gateway 用 `CUSTOM_JWT` 校验 issuer / audience / scope。
+解决一个具体问题:**Agent 要访问公司内部系统或第三方 SaaS 时,凭证从哪来、放哪里。**
 
-中国区限制的是**部分内置 OAuth provider 和 Private IdP 配置**,不等于 OAuth 2.0 整体不可用。
+比如 Agent 要查公司的工单系统,那个系统只认 OAuth token,不认 AWS IAM。Identity 就是帮你托管这类外部凭证的地方 —— 存起来、按需取用、到期刷新,而不是把 token 硬写在代码里。
+
+企业登录的常见做法:企业 IdP(Okta、Azure AD 等)签发 JWT,Gateway 配 `CUSTOM_JWT` 校验这个令牌的 issuer / audience / scope,确认调用者是谁。
+
+本教程只访问同账户的 AWS 资源,全程用 IAM,所以不需要 Identity。中国区限制的是**部分内置 OAuth provider 和 Private IdP 配置**,不等于 OAuth 2.0 整体不可用。
 
 ### Observability
 
-看四层:浏览器请求 → 控制面任务 → Runtime 调用 → 工具调用。
+Agent 系统慢或出错时,你得知道卡在哪一环。链路有四层,每层都可能是瓶颈:
 
-资源消耗指标在 CloudWatch 命名空间 **`AWS/Bedrock-AgentCore`**:`CPUUsed-vCPUHours`、`MemoryUsed-GBHours`,可按 Runtime 拆分。注意不是小写的 `bedrock-agentcore`(那里放的是应用层 strands/http 指标)。
+```text
+浏览器请求 → 控制面任务 → Runtime 调用 → 工具调用
+```
+
+常见误判:用户说"回答很慢"就归咎于 Runtime 冷启动,实际可能是模型规划花了 20 秒、或某个工具重试了三次。**不看分层数据就是瞎猜。**
+
+资源消耗指标在 CloudWatch 命名空间 **`AWS/Bedrock-AgentCore`**:`CPUUsed-vCPUHours`、`MemoryUsed-GBHours`,可按 Runtime 拆分(也是计费依据)。
+
+注意**别找错命名空间**:小写的 `bedrock-agentcore` 放的是应用层指标(工具调用次数/耗时、HTTP 请求),大写的 `AWS/Bedrock-AgentCore` 才是资源消耗。两个都有用,但是不同的东西。
 
 ### Browser 和 Code Interpreter
 
-都可用,但别默认加进团队。它们需要独立的会话生命周期、文件访问和成本边界,等主链路跑通再考虑。
+这两个是 AgentCore 托管的**沙箱环境**,让 Agent 能"动手"而不只是"回答"。
+
+**Browser** 给 Agent 一个云端浏览器。Agent 可以打开网页、点按钮、填表单、读页面内容 —— 用在没有 API 只有网页的场景,比如登录某个管理后台查数据、或从网页抓取信息。你还能拿到一个实时画面地址(live view),人工随时接管。
+
+**Code Interpreter** 给 Agent 一个隔离的代码执行环境。Agent 写一段 Python 丢进去跑,拿回结果 —— 用在算数、画图、处理数据这类"模型自己算不准"的场景。比如查到 100 台实例的成本数据,让它写代码算分位数,比让模型心算靠谱。
+
+都是中国区可用,SDK 直接调(不走 Gateway)。
+
+什么时候用:**先把 Runtime + Gateway 主链路跑通再说**。它们各自要管会话生命周期、文件进出、成本上限,是独立的一摊事 —— 入门阶段加进来只会让你分不清问题出在哪。
 
 ## 1.3 中国区没有什么
 

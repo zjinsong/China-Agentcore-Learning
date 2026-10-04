@@ -317,9 +317,9 @@ client.create_agent_runtime(
 
 生产环境把 Key 放 Secrets Manager,Runtime 启动时用执行角色取(角色加 `secretsmanager:GetSecretValue`),环境变量里只放 secret 名字。
 
-### 第三步:代码里读
+### 第三步:在代码中构建 agent
 
-[Strands Agents](https://github.com/strands-agents/sdk-python) 是 AWS 开源的 agent 框架,支持 OpenAI 兼容端点:
+前两步只是把模型的地址和密钥准备好,还需要一个 **agent 框架**来真正驱动模型、让它调用工具。本教程用 [Strands Agents](https://github.com/strands-agents/sdk-python)(AWS 开源的 agent 框架)。它支持 OpenAI 兼容端点,因此能直接接入 DeepSeek 这类模型:
 
 ```python
 import os

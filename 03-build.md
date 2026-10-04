@@ -145,7 +145,7 @@ docker run --privileged --rm tonistiigi/binfmt --install arm64
 nohup docker buildx build --platform linux/arm64 --provenance=false --load \
   -t agentcore-learning-runtime:v1 03-build > /tmp/build.log 2>&1 &
 
-# 轮询,别死等
+# 轮询查看进度
 tail -5 /tmp/build.log
 ```
 
@@ -356,7 +356,7 @@ bedrock-agentcore
 
 ### 第四步:把工具给模型
 
-Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型才知道有什么可用:
+Gateway 的 MCP 工具转成 Strands 的 `@tool`,模型即可调用:
 
 ```python
 from strands import tool
@@ -379,7 +379,7 @@ def get_learning_status() -> str:
 python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 ```
 
-模型应该**调工具拿真实数据**再回答,而不是凭记忆编。要是它不调工具直接答,检查工具 docstring 是否清楚、system prompt 有没有要求"只根据工具数据回答"。
+模型应当**调用工具获取真实数据**后再回答,而非凭记忆编造。若模型未调用工具直接作答,检查工具 docstring 是否清晰、system prompt 是否要求"仅依据工具数据回答"。
 
 第 4 章用一个完整的例子把"模型 + 工具"串起来 —— 一个能查天气的 agent。
 
@@ -389,7 +389,7 @@ python3 03-build/deploy_runtime.py invoke --prompt "check gateway"
 | --- | --- |
 | 本地起不来 | Python 依赖、8080 占用、应用异常 |
 | docker 构建失败 | 基础镜像和 PyPI 网络、buildx arm64 是否装了 QEMU |
-| 创建时拉镜像失败 | ECR 地址对不对、tag 存在吗、角色有没有 ECR 权限 |
+| 创建时拉镜像失败 | ECR 地址、镜像 tag、角色的 ECR 权限 |
 | PassRole 报错 | 部署身份权限、角色信任关系、SCP |
 | READY 但 Invoke 403 | 调用者的 `InvokeAgentRuntime` 权限 |
 | 调用超时 | Runtime 日志里的启动/应用错误 |

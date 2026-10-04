@@ -45,7 +45,7 @@ export AWS_DEFAULT_REGION=cn-northwest-1
 aws sts get-caller-identity
 ```
 
-**模型独立配置**。AgentCore 不含模型,中国区用第三方 OpenAI 兼容接口(DeepSeek、通义千问等),三个环境变量搞定:
+**模型独立配置**。AgentCore 不含模型,中国区用第三方 OpenAI 兼容接口(DeepSeek、通义千问等),通过三个环境变量配置:
 
 ```bash
 export MODEL_BASE_URL="https://api.deepseek.com/v1"
